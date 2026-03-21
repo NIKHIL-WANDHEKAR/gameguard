@@ -1,0 +1,124 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "System user profile",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "user"] },
+        "currentSpaceId": { "type": "string", "description": "ID of the currently active space" },
+        "spaceIds": { "type": "array", "items": { "type": "string" }, "description": "List of spaces the user belongs to" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Space": {
+      "title": "Space",
+      "description": "Isolated workspace for projects and scans",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "description": "Name of the space" },
+        "description": { "type": "string" },
+        "ownerId": { "type": "string", "description": "UID of the space creator" },
+        "members": { 
+          "type": "object", 
+          "description": "Map of member UIDs to their roles (owner, admin, member, viewer)",
+          "additionalProperties": { "type": "string", "enum": ["owner", "admin", "member", "viewer"] }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "ownerId", "members", "createdAt"]
+    },
+    "Scan": {
+      "title": "Scan",
+      "description": "Code analysis scan record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "spaceId": { "type": "string", "description": "ID of the space this scan belongs to" },
+        "projectName": { "type": "string" },
+        "fileName": { "type": "string", "description": "Name of the file scanned" },
+        "code": { "type": "string" },
+        "status": { "type": "string", "enum": ["completed", "failed"] },
+        "securityScore": { "type": "integer", "description": "AI-calculated security score from 0-100" },
+        "issuesCount": { "type": "integer" },
+        "issues": { "type": "array", "items": { "type": "object" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "spaceId", "projectName", "status", "createdAt"]
+    },
+    "Report": {
+      "title": "Report",
+      "description": "Space-level security and logic report",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "spaceId": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "summary": { "type": "string", "description": "AI-generated summary of the space" },
+        "technicalAnalysis": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "projectName": { "type": "string" },
+              "fileName": { "type": "string" },
+              "summary": { "type": "string" },
+              "impact": { "type": "string" },
+              "findings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": { "type": "string" },
+                    "severity": { "type": "string" },
+                    "line": { "type": "integer" },
+                    "explanation": { "type": "string" },
+                    "fix": { "type": "string", "description": "AI-suggested fix code" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "properties": {
+            "totalScans": { "type": "integer" },
+            "averageSecurityScore": { "type": "integer" },
+            "criticalIssues": { "type": "integer" },
+            "mediumIssues": { "type": "integer" },
+            "lowIssues": { "type": "integer" }
+          }
+        },
+        "diagram": { "type": "string", "description": "Mermaid.js diagram syntax" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "spaceId", "userId", "title", "summary", "metrics", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents"
+    },
+    "/spaces/{spaceId}": {
+      "schema": "Space",
+      "description": "Workspace isolation units"
+    },
+    "/scans/{scanId}": {
+      "schema": "Scan",
+      "description": "Individual code scan results"
+    },
+    "/reports/{reportId}": {
+      "schema": "Report",
+      "description": "Space-level reports"
+    }
+  }
+}

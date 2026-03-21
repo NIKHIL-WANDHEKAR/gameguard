@@ -1,0 +1,180 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - uid: string (required)
+    //   - email: string (required, email format)
+    //   - displayName: string (optional)
+    //   - role: string (required, ['admin', 'user'])
+    //   - currentSpaceId: string (optional)
+    //   - spaceIds: list (optional)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: spaces
+    // Document ID: {spaceId}
+    // Fields:
+    //   - id: string (required)
+    //   - name: string (required)
+    //   - description: string (optional)
+    //   - ownerId: string (required)
+    //   - members: map (required, {uid: role})
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: scans
+    // Document ID: {scanId}
+    // Fields:
+    //   - id: string (required)
+    //   - userId: string (required)
+    //   - spaceId: string (required)
+    //   - projectName: string (required)
+    //   - fileName: string (optional)
+    //   - code: string (optional)
+    //   - status: string (required, ['completed', 'failed'])
+    //   - issuesCount: number (required)
+    //   - issues: list (optional)
+    //   - createdAt: timestamp (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.userId;
+    }
+
+    function isSpaceMember(spaceId) {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/spaces/$(spaceId)) &&
+             (request.auth.uid in get(/databases/$(database)/documents/spaces/$(spaceId)).data.members);
+    }
+
+    function getSpaceRole(spaceId) {
+      return get(/databases/$(database)/documents/spaces/$(spaceId)).data.members[request.auth.uid];
+    }
+
+    function canManageSpace(spaceId) {
+      let role = getSpaceRole(spaceId);
+      return role == 'owner' || role == 'admin' || isAdmin();
+    }
+
+    function canCreateContent(spaceId) {
+      let role = getSpaceRole(spaceId);
+      return role == 'owner' || role == 'admin' || role == 'member' || isAdmin();
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isBootstrapAdmin() {
+      return isAuthenticated() && 
+             request.auth.token.email == "nick902191@gmail.com" && 
+             request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isBootstrapAdmin() || 
+        (isAuthenticated() && 
+         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'createdAt']) &&
+             data.uid == request.auth.uid &&
+             isValidEmail(data.email) &&
+             data.role in ['admin', 'user'] &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidSpace(data) {
+      return data.keys().hasAll(['id', 'name', 'ownerId', 'members', 'createdAt']) &&
+             data.ownerId == request.auth.uid &&
+             data.members is map &&
+             data.members[request.auth.uid] == 'owner' &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidScan(data) {
+      return data.keys().hasAll(['id', 'userId', 'spaceId', 'projectName', 'status', 'issuesCount', 'createdAt']) &&
+             data.userId == request.auth.uid &&
+             data.spaceId is string &&
+             isSpaceMember(data.spaceId) &&
+             data.projectName is string && data.projectName.size() < 100 &&
+             (!('fileName' in data) || (data.fileName is string && data.fileName.size() < 100)) &&
+             data.status in ['completed', 'failed'] &&
+             data.issuesCount is number &&
+             data.createdAt is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /test/connection {
+      allow read: if true;
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == 'user' || isAdmin());
+      allow update: if isOwner(userId) || isAdmin() || (
+        isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['spaceIds'])
+      );
+    }
+
+    match /spaces/{spaceId} {
+      allow read: if isAuthenticated() && (isAdmin() || (resource.data.members != null && request.auth.uid in resource.data.members));
+      allow create: if isAuthenticated() && isValidSpace(request.resource.data);
+      allow update: if isAuthenticated() && (
+        (resource.data.members[request.auth.uid] == 'owner' || resource.data.members[request.auth.uid] == 'admin' || isAdmin()) && 
+        isValidSpaceUpdate(request.resource.data, resource.data)
+      );
+      allow delete: if isAuthenticated() && (resource.data.members[request.auth.uid] == 'owner' || isAdmin());
+    }
+
+    function isValidSpaceUpdate(newData, oldData) {
+      // Ensure ownerId is not changed unless by admin
+      return (newData.ownerId == oldData.ownerId || isAdmin()) &&
+             newData.members is map &&
+             // Ensure current user doesn't remove themselves if they are the only owner
+             (oldData.members[request.auth.uid] != 'owner' || newData.members[request.auth.uid] == 'owner' || isAdmin()) &&
+             newData.name is string && newData.name.size() > 0 && newData.name.size() < 100;
+    }
+
+    match /scans/{scanId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isSpaceMember(resource.data.spaceId) || isAdmin());
+      allow create: if isAuthenticated() && canCreateContent(request.resource.data.spaceId) && isValidScan(request.resource.data);
+      allow update: if false; // Scans are immutable
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || canManageSpace(resource.data.spaceId) || isAdmin());
+    }
+
+    match /reports/{reportId} {
+      allow read: if isAuthenticated() && (isSpaceMember(resource.data.spaceId) || isAdmin());
+      allow create: if isAuthenticated() && canCreateContent(request.resource.data.spaceId);
+      allow delete: if isAuthenticated() && (canManageSpace(resource.data.spaceId) || isAdmin());
+    }
+  }
+}

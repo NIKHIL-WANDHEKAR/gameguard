@@ -1,0 +1,5 @@
+{
+  "name": "GameGuard",
+  "description": "AI-powered security and vulnerability detection for game development and enterprise codebases.",
+  "requestFramePermissions": []
+}
