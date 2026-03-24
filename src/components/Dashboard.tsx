@@ -26,6 +26,7 @@ import {
   X
 } from "lucide-react";
 import { GoogleGenAI } from "@google/genai";
+
 import mermaid from "mermaid";
 import { 
   XAxis, 
@@ -74,8 +75,11 @@ const chartData = [
   { name: "Sun", high: 0, medium: 2, low: 5 },
 ];
 
+console.log(import.meta.env.VITE_GEMINI_API_KEY);
 // Initialize Gemini
-const ai = new GoogleGenAI({ apiKey: process.env.VITE_GEMINI_API_KEY });
+const ai = new GoogleGenAI({
+  apiKey: import.meta.env.VITE_GEMINI_API_KEY
+});
 
 // Initialize Mermaid
 mermaid.initialize({

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import LandingPage from "./components/LandingPage";
 import Dashboard from "./components/Dashboard";
-import { Shield, Lock, Mail, ArrowRight, X } from "lucide-react";
+import { Shield, ArrowRight, X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { auth, db } from "./firebase";
 import { 
@@ -11,7 +11,7 @@ import {
   User as FirebaseUser,
   signOut
 } from "firebase/auth";
-import { doc, getDoc, setDoc, updateDoc, arrayUnion, serverTimestamp, getDocFromServer } from "firebase/firestore";
+import { doc, getDoc, setDoc, serverTimestamp, getDocFromServer } from "firebase/firestore";
 
 export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
